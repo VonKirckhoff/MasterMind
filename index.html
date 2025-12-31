@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mastermind</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: black;
+        }
+        #game {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+            max-width: 300px; 
+        }
+        #colors {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .color {
+            width: 25px;
+            height: 25px;
+            margin: 3px;
+            display: inline-block;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #ddd;
+        }
+        #board {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .hole {
+            width: 20px;
+            height: 20px;
+            margin: 3px;
+            border-radius: 50%;
+            border: 2px solid #ddd;
+        }
+        .feedback {
+            margin-left: 10px; /* Kleinere marge */
+            display: grid; 
+            grid-template-columns: repeat(2, 12px); /* Vierkant raster voor feedback pins */
+            grid-template-rows: repeat(2, 12px);
+            gap: 2px; /* Kleine ruimte tussen feedback pins */
+        }
+        .feedback .pin {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1px solid #333;
+            background-color: #ccc; /* Lichtgrijze achtergrond voor lege pegs */
+        }
+        #check {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #message {
+            margin-top: 20px;
+            font-size: 1.2em;
+            text-align: center;
+        }
+        #legend {
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+            max-width: 300px;
+            text-align: center;
+        }
+        #legend .legend-item {
+            display: flex;
+            align-items: center;
+            justify-content: left;
+            margin: 5px 0;
+        }
+        #legend .legend-item .legend-color {
+            width: 12px;
+            height: 12px;
+            margin-right: 10px;
+            border-radius: 50%;
+            border: 1px solid #333;
+        }
+        #legend .legend-item .legend-text {
+            font-size: 0.7em;
+        }
+        .turn-number {
+            margin-right: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game">
+    <div id="colors">
+        <div class="color" data-color="red" style="background-color: red;"></div>
+        <div class="color" data-color="blue" style="background-color: blue;"></div>
+        <div class="color" data-color="green" style="background-color: green;"></div>
+        <div class="color" data-color="yellow" style="background-color: yellow;"></div>
+        <div class="color" data-color="orange" style="background-color: orange;"></div>
+        <div class="color" data-color="purple" style="background-color: purple;"></div>
+    </div>
+
+    <div id="board">
+        <!-- Pogingen worden hier toegevoegd -->
+    </div>
+
+    <button id="check">Controleer</button>
+    <div id="message"></div>
+
+    <div id="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: black;"></div>
+            <div class="legend-text">Zwarte peg: Juiste kleur en positie</div>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: white; border: 1px solid #333;"></div>
+            <div class="legend-text">Witte peg: Juiste kleur, verkeerde positie</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const colors = document.querySelectorAll('.color');
+    const board = document.getElementById('board');
+    const checkButton = document.getElementById('check');
+    const message = document.getElementById('message');
+
+    let guess = ["", "", "", ""];
+    let secretCode = [];
+    let currentRow = null;
+    let turn = 1; // Houdt het beurtnummer bij
+
+    // Genereer het geheime code
+    function generateSecretCode() {
+        const colorOptions = ['red', 'blue', 'green', 'yellow', 'orange', 'purple'];
+        for (let i = 0; i < 4; i++) {
+            secretCode.push(colorOptions[Math.floor(Math.random() * colorOptions.length)]);
+        }
+    }
+
+    generateSecretCode();
+    console.log(secretCode);
+
+    // Maak een nieuwe rij aan voor elke poging
+    function createRow() {
+        const row = document.createElement('div');
+        row.classList.add('row');
+
+        const turnLabel = document.createElement('div');
+        turnLabel.classList.add('turn-number');
+        turnLabel.textContent = `Beurt ${turn}:`;
+        row.appendChild(turnLabel);
+        
+        for (let i = 0; i < 4; i++) {
+            const hole = document.createElement('div');
+            hole.classList.add('hole');
+            hole.setAttribute('data-pos', i);
+            row.appendChild(hole);
+        }
+
+        const feedback = document.createElement('div');
+        feedback.classList.add('feedback');
+        for (let i = 0; i < 4; i++) {
+            const pin = document.createElement('div');
+            pin.classList.add('pin');
+            feedback.appendChild(pin);
+        }
+        row.appendChild(feedback);
+
+        board.appendChild(row);
+        currentRow = row;
+    }
+
+    createRow(); // Start met een nieuwe rij
+
+    // Speler selecteert een kleur
+    colors.forEach(color => {
+        color.addEventListener('click', function() {
+            const selectedColor = this.getAttribute('data-color');
+            const emptyHole = Array.from(currentRow.querySelectorAll('.hole')).find(hole => hole.style.backgroundColor === "");
+            if (emptyHole) {
+                emptyHole.style.backgroundColor = selectedColor;
+                guess[emptyHole.getAttribute('data-pos')] = selectedColor;
+            }
+        });
+    });
+
+    // Controleer de gok van de speler
+    checkButton.addEventListener('click', function() {
+        if (guess.includes("")) {
+            message.textContent = "Vul alle gaten in!";
+            return;
+        }
+
+        let correctPosition = 0;
+        let correctColor = 0;
+        let secretCodeCopy = [...secretCode];
+
+        // Controleer eerst op correcte positie
+        guess.forEach((color, index) => {
+            if (color === secretCode[index]) {
+                correctPosition++;
+                secretCodeCopy[index] = null; // Markeer deze positie als correct geraden
+            }
+        });
+
+        // Controleer op juiste kleur op verkeerde positie
+        guess.forEach((color, index) => {
+            if (color !== secretCode[index] && secretCodeCopy.includes(color)) {
+                correctColor++;
+                secretCodeCopy[secretCodeCopy.indexOf(color)] = null; // Markeer deze kleur als correct geraden
+            }
+        });
+
+        // Voeg feedback toe aan de huidige rij
+        const pins = currentRow.querySelectorAll('.pin');
+        for (let i = 0; i < correctPosition; i++) {
+            pins[i].style.backgroundColor = 'black'; // Correcte positie en kleur
+        }
+        for (let i = correctPosition; i < correctPosition + correctColor; i++) {
+            pins[i].style.backgroundColor = 'white'; // Correcte kleur maar verkeerde positie
+        }
+
+        if (correctPosition === 4) {
+            message.textContent = "Gefeliciteerd! Je hebt gewonnen!";
+            checkButton.disabled = true; // Blokkeer verdere input
+        } else {
+            guess = ["", "", "", ""];
+            turn++; // Beurtnummer verhogen
+            createRow(); // Nieuwe rij voor volgende poging
+        }
+    });
+</script>
+
+</body>
+</html>
