@@ -10,7 +10,10 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px 0;
+            box-sizing: border-box;
             background-color: black;
         }
         #game {
@@ -19,6 +22,15 @@
             border-radius: 10px;
             box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
             max-width: 300px; 
+        }
+        #score {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+        #score span {
+            font-weight: bold;
         }
         #colors {
             margin-bottom: 20px;
@@ -42,6 +54,11 @@
             display: flex;
             align-items: center;
             margin-bottom: 5px;
+            opacity: 0.45;           /* Toekomstige rijen zijn gedimd */
+        }
+        .row.active,
+        .row.done {
+            opacity: 1;
         }
         .hole {
             width: 20px;
@@ -50,33 +67,67 @@
             border-radius: 50%;
             border: 2px solid #ddd;
         }
+        .row.active .hole {
+            cursor: pointer;
+        }
+        /* Geselecteerd gat: hier komt de volgende kleur terecht */
+        .hole.selected {
+            border-color: #333;
+            box-shadow: 0 0 0 2px #28a745;
+        }
         .feedback {
-            margin-left: 10px; /* Kleinere marge */
+            margin-left: 10px;
             display: grid; 
-            grid-template-columns: repeat(2, 12px); /* Vierkant raster voor feedback pins */
+            grid-template-columns: repeat(2, 12px);
             grid-template-rows: repeat(2, 12px);
-            gap: 2px; /* Kleine ruimte tussen feedback pins */
+            gap: 2px;
         }
         .feedback .pin {
             width: 12px;
             height: 12px;
             border-radius: 50%;
             border: 1px solid #333;
-            background-color: #ccc; /* Lichtgrijze achtergrond voor lege pegs */
+            background-color: #ccc;
         }
-        #check {
+        .buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
             margin-top: 20px;
+        }
+        .buttons button {
             padding: 10px 20px;
-            background-color: #28a745;
             color: #fff;
             border: none;
             border-radius: 5px;
             cursor: pointer;
         }
+        #check {
+            background-color: #28a745;
+        }
+        #newGame {
+            background-color: #007bff;
+            display: none;
+        }
+        #check:disabled {
+            background-color: #999;
+            cursor: default;
+        }
         #message {
             margin-top: 20px;
             font-size: 1.2em;
             text-align: center;
+        }
+        #solution {
+            display: none;
+            justify-content: center;
+            margin-top: 8px;
+        }
+        #hint {
+            font-size: 0.7em;
+            color: #555;
+            text-align: center;
+            margin-bottom: 10px;
         }
         #legend {
             background-color: #fff;
@@ -105,12 +156,18 @@
         .turn-number {
             margin-right: 10px;
             font-weight: bold;
+            width: 70px;
         }
     </style>
 </head>
 <body>
 
 <div id="game">
+    <div id="score">
+        <div>Reeks: <span id="streak">0</span></div>
+        <div>Record: <span id="record">0</span></div>
+    </div>
+
     <div id="colors">
         <div class="color" data-color="red" style="background-color: red;"></div>
         <div class="color" data-color="blue" style="background-color: blue;"></div>
@@ -120,12 +177,18 @@
         <div class="color" data-color="purple" style="background-color: purple;"></div>
     </div>
 
+    <div id="hint">Klik op een gat om het te selecteren en kies dan een kleur. Klik nog eens op een geselecteerd gat om het leeg te maken.</div>
+
     <div id="board">
-        <!-- Pogingen worden hier toegevoegd -->
+        <!-- De 10 rijen worden hier aangemaakt -->
     </div>
 
-    <button id="check">Controleer</button>
+    <div class="buttons">
+        <button id="check">Controleer</button>
+        <button id="newGame">Volgend spel</button>
+    </div>
     <div id="message"></div>
+    <div id="solution"></div>
 
     <div id="legend">
         <div class="legend-item">
@@ -140,41 +203,81 @@
 </div>
 
 <script>
+    const MAX_TURNS = 10;
+    const colorOptions = ['red', 'blue', 'green', 'yellow', 'orange', 'purple'];
+
     const colors = document.querySelectorAll('.color');
     const board = document.getElementById('board');
     const checkButton = document.getElementById('check');
+    const newGameButton = document.getElementById('newGame');
     const message = document.getElementById('message');
+    const solution = document.getElementById('solution');
+    const streakEl = document.getElementById('streak');
+    const recordEl = document.getElementById('record');
 
-    let guess = ["", "", "", ""];
-    let secretCode = [];
+    let guess;
+    let secretCode;
+    let rows = [];           // Alle 10 rijen
     let currentRow = null;
-    let turn = 1; // Houdt het beurtnummer bij
+    let turn;                // 1 t.e.m. 10
+    let selectedPos;
+    let gameOver;
 
-    // Genereer het geheime code
+    let streak = 0;          // Aantal gewonnen spellen na elkaar
+    let record = 0;          // Langste reeks ooit
+
     function generateSecretCode() {
-        const colorOptions = ['red', 'blue', 'green', 'yellow', 'orange', 'purple'];
+        secretCode = [];
         for (let i = 0; i < 4; i++) {
             secretCode.push(colorOptions[Math.floor(Math.random() * colorOptions.length)]);
         }
+        console.log(secretCode);
     }
 
-    generateSecretCode();
-    console.log(secretCode);
+    // Toon welk gat geselecteerd is; enkel in de actieve rij
+    function updateSelection() {
+        board.querySelectorAll('.hole.selected').forEach(h => h.classList.remove('selected'));
+        if (!gameOver && currentRow) {
+            currentRow.querySelectorAll('.hole')[selectedPos].classList.add('selected');
+        }
+    }
 
-    // Maak een nieuwe rij aan voor elke poging
-    function createRow() {
+    function nextEmptyPos(from) {
+        for (let i = 1; i <= 4; i++) {
+            const pos = (from + i) % 4;
+            if (guess[pos] === "") return pos;
+        }
+        return from;
+    }
+
+    // Maak één rij aan (nog niet actief)
+    function createRow(number) {
         const row = document.createElement('div');
         row.classList.add('row');
 
         const turnLabel = document.createElement('div');
         turnLabel.classList.add('turn-number');
-        turnLabel.textContent = `Beurt ${turn}:`;
+        turnLabel.textContent = `Beurt ${number}:`;
         row.appendChild(turnLabel);
-        
+
         for (let i = 0; i < 4; i++) {
             const hole = document.createElement('div');
             hole.classList.add('hole');
             hole.setAttribute('data-pos', i);
+
+            hole.addEventListener('click', function() {
+                if (row !== currentRow || gameOver) return; // Enkel de actieve rij is bewerkbaar
+
+                if (selectedPos === i && guess[i] !== "") {
+                    guess[i] = "";
+                    hole.style.backgroundColor = "";
+                } else {
+                    selectedPos = i;
+                }
+                message.textContent = "";
+                updateSelection();
+            });
+
             row.appendChild(hole);
         }
 
@@ -188,25 +291,97 @@
         row.appendChild(feedback);
 
         board.appendChild(row);
-        currentRow = row;
+        return row;
     }
 
-    createRow(); // Start met een nieuwe rij
+    // Maak de volgende rij actief
+    function activateRow(number) {
+        if (currentRow) {
+            currentRow.classList.remove('active');
+            currentRow.classList.add('done');
+        }
+        currentRow = rows[number - 1];
+        currentRow.classList.add('active');
+        guess = ["", "", "", ""];
+        selectedPos = 0;
+        updateSelection();
+    }
 
-    // Speler selecteert een kleur
+    function updateScore() {
+        streakEl.textContent = streak;
+        recordEl.textContent = record;
+    }
+
+    function showSolution() {
+        solution.innerHTML = "";
+        secretCode.forEach(color => {
+            const hole = document.createElement('div');
+            hole.classList.add('hole');
+            hole.style.backgroundColor = color;
+            solution.appendChild(hole);
+        });
+        solution.style.display = 'flex';
+    }
+
+    function endGame(won) {
+        gameOver = true;
+        currentRow.classList.remove('active');
+        currentRow.classList.add('done');
+        updateSelection();                 // Verwijdert de groene rand
+        checkButton.disabled = true;
+        newGameButton.style.display = 'inline-block';
+
+        if (won) {
+            streak++;
+            if (streak > record) {
+                record = streak;
+                message.textContent = `Gewonnen in ${turn} beurten! Nieuw record: ${record}!`;
+            } else {
+                message.textContent = `Gewonnen in ${turn} beurten!`;
+            }
+        } else {
+            streak = 0;
+            message.textContent = "Helaas, de 10 beurten zijn op. De oplossing was:";
+            showSolution();
+        }
+        updateScore();
+    }
+
+    function startGame() {
+        board.innerHTML = "";
+        rows = [];
+        currentRow = null;
+        gameOver = false;
+        turn = 1;
+        message.textContent = "";
+        solution.style.display = 'none';
+        checkButton.disabled = false;
+        newGameButton.style.display = 'none';
+
+        generateSecretCode();
+        for (let i = 1; i <= MAX_TURNS; i++) {
+            rows.push(createRow(i));
+        }
+        activateRow(1);
+    }
+
     colors.forEach(color => {
         color.addEventListener('click', function() {
+            if (gameOver) return;
+
             const selectedColor = this.getAttribute('data-color');
-            const emptyHole = Array.from(currentRow.querySelectorAll('.hole')).find(hole => hole.style.backgroundColor === "");
-            if (emptyHole) {
-                emptyHole.style.backgroundColor = selectedColor;
-                guess[emptyHole.getAttribute('data-pos')] = selectedColor;
-            }
+            const hole = currentRow.querySelectorAll('.hole')[selectedPos];
+            hole.style.backgroundColor = selectedColor;
+            guess[selectedPos] = selectedColor;
+
+            selectedPos = nextEmptyPos(selectedPos);
+            message.textContent = "";
+            updateSelection();
         });
     });
 
-    // Controleer de gok van de speler
     checkButton.addEventListener('click', function() {
+        if (gameOver) return;
         if (guess.includes("")) {
             message.textContent = "Vul alle gaten in!";
             return;
@@ -216,40 +391,42 @@
         let correctColor = 0;
         let secretCodeCopy = [...secretCode];
 
-        // Controleer eerst op correcte positie
         guess.forEach((color, index) => {
             if (color === secretCode[index]) {
                 correctPosition++;
-                secretCodeCopy[index] = null; // Markeer deze positie als correct geraden
+                secretCodeCopy[index] = null;
             }
         });
 
-        // Controleer op juiste kleur op verkeerde positie
         guess.forEach((color, index) => {
             if (color !== secretCode[index] && secretCodeCopy.includes(color)) {
                 correctColor++;
-                secretCodeCopy[secretCodeCopy.indexOf(color)] = null; // Markeer deze kleur als correct geraden
+                secretCodeCopy[secretCodeCopy.indexOf(color)] = null;
             }
         });
 
-        // Voeg feedback toe aan de huidige rij
         const pins = currentRow.querySelectorAll('.pin');
         for (let i = 0; i < correctPosition; i++) {
-            pins[i].style.backgroundColor = 'black'; // Correcte positie en kleur
+            pins[i].style.backgroundColor = 'black';
         }
         for (let i = correctPosition; i < correctPosition + correctColor; i++) {
-            pins[i].style.backgroundColor = 'white'; // Correcte kleur maar verkeerde positie
+            pins[i].style.backgroundColor = 'white';
         }
 
         if (correctPosition === 4) {
-            message.textContent = "Gefeliciteerd! Je hebt gewonnen!";
-            checkButton.disabled = true; // Blokkeer verdere input
+            endGame(true);
+        } else if (turn === MAX_TURNS) {
+            endGame(false);
         } else {
-            guess = ["", "", "", ""];
-            turn++; // Beurtnummer verhogen
-            createRow(); // Nieuwe rij voor volgende poging
+            turn++;
+            activateRow(turn);
         }
     });
+
+    newGameButton.addEventListener('click', startGame);
+
+    updateScore();
+    startGame();
 </script>
 
 </body>
