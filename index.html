@@ -29,8 +29,20 @@
             margin-bottom: 15px;
             font-size: 0.9em;
         }
+        #score {
+            align-items: center;
+        }
         #score span {
             font-weight: bold;
+        }
+        #resetRecord {
+            padding: 3px 8px;
+            font-size: 0.8em;
+            background-color: #fff;
+            color: #c00;
+            border: 1px solid #c00;
+            border-radius: 4px;
+            cursor: pointer;
         }
         #colors {
             margin-bottom: 20px;
@@ -166,6 +178,7 @@
     <div id="score">
         <div>Reeks: <span id="streak">0</span></div>
         <div>Record: <span id="record">0</span></div>
+        <button id="resetRecord" title="Record terugzetten naar 0">Reset</button>
     </div>
 
     <div id="colors">
@@ -223,8 +236,30 @@
     let selectedPos;
     let gameOver;
 
+    const RECORD_KEY = 'mastermind-record';
+    const resetRecordButton = document.getElementById('resetRecord');
+
     let streak = 0;          // Aantal gewonnen spellen na elkaar
-    let record = 0;          // Langste reeks ooit
+    let record = loadRecord(); // Langste reeks ooit, bewaard in de browser
+
+    // Lees het record uit localStorage (0 als er nog niets bewaard is)
+    function loadRecord() {
+        try {
+            const saved = parseInt(localStorage.getItem(RECORD_KEY), 10);
+            return isNaN(saved) ? 0 : saved;
+        } catch (e) {
+            return 0; // localStorage niet beschikbaar
+        }
+    }
+
+    // Schrijf het record weg naar localStorage
+    function saveRecord() {
+        try {
+            localStorage.setItem(RECORD_KEY, record);
+        } catch (e) {
+            console.warn('Record kon niet bewaard worden:', e);
+        }
+    }
 
     function generateSecretCode() {
         secretCode = [];
@@ -335,6 +370,7 @@
             streak++;
             if (streak > record) {
                 record = streak;
+                saveRecord();
                 message.textContent = `Gewonnen in ${turn} beurten! Nieuw record: ${record}!`;
             } else {
                 message.textContent = `Gewonnen in ${turn} beurten!`;
@@ -424,6 +460,19 @@
     });
 
     newGameButton.addEventListener('click', startGame);
+
+    // Record resetten (na bevestiging); de huidige reeks begint ook opnieuw
+    resetRecordButton.addEventListener('click', function() {
+        if (!confirm('Weet je zeker dat je het record wilt resetten?')) return;
+        record = 0;
+        streak = 0;
+        try {
+            localStorage.removeItem(RECORD_KEY);
+        } catch (e) {
+            console.warn('Record kon niet verwijderd worden:', e);
+        }
+        updateScore();
+    });
 
     updateScore();
     startGame();
